@@ -40,7 +40,7 @@ function tick(remote = 0) { clock = Math.max(clock, Number(remote) || 0) + 1; re
 function record(type, data = {}) { const e = { time: new Date().toISOString(), node: NODE_ID, type, ...data }; events.push(e); if (events.length > 120) events.shift(); console.log(JSON.stringify(e)); }
 function reply(res, status, body) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); res.end(JSON.stringify(body)); }
 function parse(req) { return new Promise((resolve, reject) => { let parts = [], length = 0; req.on('data', b => { length += b.length; if (length > 32768) { reject(failure(413, 'Corpo muito grande')); req.destroy(); } else parts.push(b); }); req.on('end', () => { try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}); } catch { reject(failure(400, 'JSON inválido')); } }); req.on('error', reject); }); }
-async function call(id, uri, method = 'GET', body, timeout = 900) { const base = PEERS.get(Number(id)); if (!base) throw failure(400, 'Nó inválido'); const res = await fetch(base + uri, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeout) }); const data = await res.json().catch(() => ({})); if (!res.ok) throw failure(res.status, data.error || `HTTP ${res.status}`); peerSeen.set(Number(id), Date.now()); return data; }
+async function call(id, uri, method = 'GET', body, timeout = 900) { const base = PEERS.get(Number(id)); if (!base) throw failure(400, 'Nó inválido'); const res = await fetch(base + uri, { method, headers: { 'content-type': 'application/json', 'x-control-token': TOKEN }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeout) }); const data = await res.json().catch(() => ({})); if (!res.ok) throw failure(res.status, data.error || `HTTP ${res.status}`); peerSeen.set(Number(id), Date.now()); return data; }
 function amountToCents(x) { const n = Number(x); if (typeof x === 'boolean' || x === null || x === '' || !Number.isFinite(n) || n <= 0 || Math.abs(n * 100 - Math.round(n * 100)) > 1e-6 || n > 100000000) throw failure(400, 'Informe valor positivo com até 2 casas decimais'); return Math.round(n * 100); }
 function allAuctions() {
   const map = new Map(); for (const e of log) {
@@ -78,6 +78,8 @@ async function operation(kind, body, auctionId) {
 }
 async function handle(req, res) {
   if (req.method === 'OPTIONS') return reply(res, 204, {}); const u = new URL(req.url, `http://localhost:${PORT}`), r = u.pathname;
+  // Apenas o gateway e os pares autenticados podem acessar as rotas dos nós.
+  if (r !== '/health' && req.headers['x-control-token'] !== TOKEN) throw failure(403, 'Acesso interno negado');
   // Rotas administrativas continuam acessíveis quando a falha é simulada.
   if (r.startsWith('/_admin/')) {
     if (req.headers['x-control-token'] !== TOKEN) throw failure(403, 'Acesso administrativo negado');

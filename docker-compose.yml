@@ -4,7 +4,7 @@ x-node-env: &node-env
   PORT: 3000
   DATA_DIR: /data
   CLUSTER_NODES: "1=http://node1:3000,2=http://node2:3000,3=http://node3:3000,4=http://node4:3000,5=http://node5:3000"
-  CONTROL_TOKEN: "lab-local-demo"
+  CONTROL_TOKEN: "${CONTROL_TOKEN:?Configure CONTROL_TOKEN no arquivo .env}"
   CLUSTER_INITIAL_ACTIVE: "1,2,3"
 
 x-node: &node-base
@@ -20,35 +20,30 @@ services:
     environment:
       <<: *node-env
       NODE_ID: 1
-    ports: ["127.0.0.1:3001:3000"]
     volumes: ["node1_data:/data"]
   node2:
     <<: *node-base
     environment:
       <<: *node-env
       NODE_ID: 2
-    ports: ["127.0.0.1:3002:3000"]
     volumes: ["node2_data:/data"]
   node3:
     <<: *node-base
     environment:
       <<: *node-env
       NODE_ID: 3
-    ports: ["127.0.0.1:3003:3000"]
     volumes: ["node3_data:/data"]
   node4:
     <<: *node-base
     environment:
       <<: *node-env
       NODE_ID: 4
-    ports: ["127.0.0.1:3004:3000"]
     volumes: ["node4_data:/data"]
   node5:
     <<: *node-base
     environment:
       <<: *node-env
       NODE_ID: 5
-    ports: ["127.0.0.1:3005:3000"]
     volumes: ["node5_data:/data"]
   dashboard:
     <<: *node-base
@@ -59,6 +54,8 @@ services:
     environment:
       <<: *node-env
       PORT: 8080
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-admin@atrio.local}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Configure ADMIN_PASSWORD no arquivo .env}"
     ports: ["127.0.0.1:8080:8080"]
     volumes: ["dashboard_data:/data"]
     depends_on: [node1, node2, node3, node4, node5]

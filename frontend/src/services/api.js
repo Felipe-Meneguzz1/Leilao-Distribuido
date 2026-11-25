@@ -1,13 +1,18 @@
 export async function api(route, method = 'GET', data) {
   const response = await fetch(route, {
     method,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: data === undefined ? undefined : JSON.stringify(data),
     signal: AbortSignal.timeout(11000)
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(result.error || 'Erro HTTP ' + response.status);
+  if (!response.ok) {
+    if (response.status === 401 && !route.startsWith('/api/auth/')) {
+      window.dispatchEvent(new Event('atrio:unauthorized'));
+    }
+    throw Object.assign(new Error(result.error || 'Erro HTTP ' + response.status), { status: response.status });
+  }
   return result;
 }
 

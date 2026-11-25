@@ -5,3 +5,6 @@ node_modules/
 *.log
 coverage/
 frontend/dist/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

@@ -1,19 +1,21 @@
 import React from 'react';
 import { brl } from '../services/api.js';
 
-export default function Auctions({ auctions, busy, onAction }) {
+export default function Auctions({ auctions, busy, onAction, client = false }) {
   if (!auctions.length)
     return (
       <div className="py-10 text-center">
         <p className="font-semibold">Nenhum leilão por aqui</p>
-        <p className="muted my-2">Crie um item ou simule uma rodada.</p>
-        <button
-          className="btn primary"
-          disabled={busy}
-          onClick={() => onAction('create')}
-        >
-          Criar primeiro leilão
-        </button>
+        <p className="muted my-2">{client ? 'Aguarde a criação de novos leilões.' : 'Crie um item ou simule uma rodada.'}</p>
+        {!client && (
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={() => onAction('create')}
+          >
+            Criar primeiro leilão
+          </button>
+        )}
       </div>
     );
   return (
@@ -50,13 +52,15 @@ export default function Auctions({ auctions, busy, onAction }) {
               </button>
               {a.status === 'aberto' && (
                 <>
-                  <button
-                    className="btn"
-                    disabled={busy}
-                    onClick={() => onAction('close', a.id)}
-                  >
-                    Encerrar
-                  </button>
+                  {!client && (
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => onAction('close', a.id)}
+                    >
+                      Encerrar
+                    </button>
+                  )}
                   <button
                     className="btn primary"
                     disabled={busy}

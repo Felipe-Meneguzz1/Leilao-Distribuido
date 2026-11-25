@@ -4,6 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { createAuth, validateOrigin } = require('./auth');
 const PORT = Number(process.env.PORT || 8080);
 const TOKEN = process.env.CONTROL_TOKEN || 'lab-local-demo';
 const NODES = new Map((process.env.CLUSTER_NODES || '1=http://localhost:3001,2=http://localhost:3002,3=http://localhost:3003').split(',').map(x => { const i = x.indexOf('='); return [Number(x.slice(0, i)), x.slice(i + 1).replace(/\/$/, '')]; }));
@@ -11,6 +12,7 @@ const defaultActive = (process.env.CLUSTER_INITIAL_ACTIVE || '1,2,3').split(',')
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), '.data', 'dashboard');
 const STORE = path.join(DATA_DIR, 'cluster-config.json');
 fs.mkdirSync(DATA_DIR, { recursive: true });
+const auth = createAuth(DATA_DIR);
 const original = { epoch: 0, activeIds: defaultActive, writeQuorum: Math.floor(defaultActive.length / 2) + 1, names: Object.fromEntries([...NODES.keys()].map(id => [id, `Nó ${id}`])) };
 let config = fs.existsSync(STORE) ? JSON.parse(fs.readFileSync(STORE, 'utf8')) : original;
 const pub = path.resolve(process.env.FRONTEND_DIST || path.join(__dirname, '../../frontend/dist'));
@@ -22,7 +24,7 @@ function validate(c) { return c && Number.isInteger(c.epoch) && Array.isArray(c.
 if (!validate(config)) throw Error('Configuração do dashboard inválida');
 function storeConfig(c) { const tmp = STORE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(c, null, 2)); fs.renameSync(tmp, STORE); }
 function body(req) { return new Promise((resolve, reject) => { let bufs = [], size = 0; req.on('data', b => { size += b.length; if (size > 32768) { reject(fail(413, 'Requisição muito grande')); req.destroy(); } else bufs.push(b); }); req.on('end', () => { try { resolve(bufs.length ? JSON.parse(Buffer.concat(bufs).toString()) : {}); } catch { reject(fail(400, 'JSON inválido')); } }); req.on('error', reject); }); }
-async function call(id, route, method = 'GET', payload, { admin = false, timeout = 1400 } = {}) { const base = NODES.get(Number(id)); if (!base) throw fail(404, 'Nó inexistente'); const res = await fetch(base + route, { method, headers: { 'content-type': 'application/json', ...(admin ? { 'x-control-token': TOKEN } : {}) }, body: payload === undefined ? undefined : JSON.stringify(payload), signal: AbortSignal.timeout(timeout) }); const data = await res.json().catch(() => ({})); if (!res.ok) throw fail(res.status, data.error || `Falha HTTP ${res.status}`); return data; }
+async function call(id, route, method = 'GET', payload, { admin = false, timeout = 1400 } = {}) { const base = NODES.get(Number(id)); if (!base) throw fail(404, 'Nó inexistente'); const res = await fetch(base + route, { method, headers: { 'content-type': 'application/json', 'x-control-token': TOKEN }, body: payload === undefined ? undefined : JSON.stringify(payload), signal: AbortSignal.timeout(timeout) }); const data = await res.json().catch(() => ({})); if (!res.ok) throw fail(res.status, data.error || `Falha HTTP ${res.status}`); return data; }
 async function inspect() {
     const checks = await Promise.all([...NODES.keys()].map(async id => { try { const a = await call(id, '/_admin/state', 'GET', undefined, { admin: true, timeout: 1100 }); return { id, name: config.names[id], member: config.activeIds.includes(id), reachable: !!(config.activeIds.includes(id) && !a.paused && a.member), connected: true, paused: a.paused, leaderId: a.leaderId, term: a.term, seq: a.seq, lamport: a.lamport, configEpoch: a.configEpoch, events: a.events || [] }; } catch { return { id, name: config.names[id], member: config.activeIds.includes(id), reachable: false, connected: false, paused: null, leaderId: null, term: null, seq: null, lamport: null, configEpoch: null, events: [] }; } }));
     const live = checks.filter(n => n.reachable), claims = live.filter(n => n.leaderId === n.id), winner = claims.sort((a, b) => (b.term || 0) - (a.term || 0))[0]; const configured = checks.filter(n => n.member); const synchronized = checks.every(n => !n.connected || n.configEpoch === config.epoch) && configured.every(n => n.connected && n.configEpoch === config.epoch);
@@ -44,12 +46,28 @@ function mutation(fn) { const next = serial.then(fn); serial = next.catch(() => 
 async function handler(req, res) {
     const url = new URL(req.url, `http://localhost:${PORT}`), p = url.pathname;
     if (p.startsWith('/api/')) {
+        validateOrigin(req);
+        if (req.method === 'POST' && p === '/api/auth/register') return json(res, 201, await auth.register(req, res, await body(req)));
+        if (req.method === 'POST' && p === '/api/auth/login') return json(res, 200, await auth.login(req, res, await body(req)));
+        if (req.method === 'POST' && p === '/api/auth/logout') return json(res, 200, auth.logout(req, res));
+        const user = auth.current(req);
+        if (req.method === 'GET' && p === '/api/auth/me') return json(res, 200, { user });
+        const clientAllowed = (req.method === 'GET' && p === '/api/auctions') || (req.method === 'POST' && /^\/api\/auctions\/[A-Za-z0-9-]+\/bids$/.test(p));
+        if (user.role !== 'admin' && !clientAllowed) throw fail(403, 'Acesso exclusivo do administrador.');
         if (req.method === 'GET' && p === '/api/cluster') return json(res, 200, await inspect());
         if (req.method === 'GET' && p === '/api/events') { const s = await inspect(); const all = s.nodes.flatMap(n => n.events).sort((a, b) => b.time.localeCompare(a.time)).slice(0, 75); return json(res, 200, { events: all }); }
         if (req.method === 'GET' && p === '/api/auctions') { const s = await inspect(); const chosen = s.nodes.find(n => n.id === s.leaderId && n.reachable) || s.nodes.filter(n => n.reachable).sort((a, b) => b.seq - a.seq)[0]; if (!chosen) return json(res, 200, { auctions: [], stale: true }); const result = await call(chosen.id, '/auctions'); return json(res, 200, { ...result, stale: !s.majority || !s.leaderId }); }
         if (req.method === 'POST' && p === '/api/auctions') { const b = await body(req); return json(res, 201, await forward('/auctions', 'POST', { ...b, requestId: b.requestId || crypto.randomUUID() })); }
         const op = p.match(/^\/api\/auctions\/([A-Za-z0-9-]+)\/(bids|close)$/);
-        if (req.method === 'POST' && op) { const b = await body(req); return json(res, 200, await forward(`/auctions/${op[1]}/${op[2]}`, 'POST', { ...b, requestId: b.requestId || crypto.randomUUID() }, b.receiverNode)); }
+        if (req.method === 'POST' && op) {
+            const b = await body(req);
+            if (user.role === 'client') {
+                // Identidade e destino são definidos pelo servidor, não pelo cliente.
+                const requestId = 'client-' + user.id + '-' + crypto.createHash('sha256').update(op[1] + ':' + (typeof b.requestId === 'string' ? b.requestId : crypto.randomUUID())).digest('hex');
+                return json(res, 200, await forward(`/auctions/${op[1]}/bids`, 'POST', { bidder: user.name, amount: b.amount, requestId }));
+            }
+            return json(res, 200, await forward(`/auctions/${op[1]}/${op[2]}`, 'POST', { ...b, requestId: b.requestId || crypto.randomUUID() }, b.receiverNode));
+        }
         const node = p.match(/^\/api\/nodes\/(\d+)\/(failure|deactivate)$/);
         if (req.method === 'POST' && node) {
             const id = Number(node[1]); if (!NODES.has(id)) throw fail(404, 'Nó inexistente'); if (node[2] === 'failure') { const b = await body(req); if (typeof b.paused !== 'boolean') throw fail(400, 'Campo paused inválido'); if (!config.activeIds.includes(id)) throw fail(409, 'Nó inativo; ative-o antes de simular falha'); return json(res, 200, await call(id, '/_admin/failure', 'POST', { paused: b.paused }, { admin: true, timeout: 1800 })); }

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { brl, when } from '../services/api.js';
 
-export default function OperationModal({ modal, auction, node, cluster, busy, onClose, onSubmit }) {
+export default function OperationModal({ modal, auction, node, cluster, busy, onClose, onSubmit, client }) {
   const action = modal.action;
   const title = {
     create: 'Criar novo leilão',
@@ -85,15 +85,19 @@ export default function OperationModal({ modal, auction, node, cluster, busy, on
           )}
           {action === 'bid' && (
             <>
-              <label className="field">
-                Seu nome
-                <input
-                  autoFocus
-                  name="bidder"
-                  maxLength={60}
-                  required
-                />
-              </label>
+              {client ? (
+                <p className="muted">Lance em nome de <b>{client.name}</b>.</p>
+              ) : (
+                <label className="field">
+                  Seu nome
+                  <input
+                    autoFocus
+                    name="bidder"
+                    maxLength={60}
+                    required
+                  />
+                </label>
+              )}
               <label className="field">
                 Valor do lance (R$)
                 <input
@@ -105,16 +109,20 @@ export default function OperationModal({ modal, auction, node, cluster, busy, on
                   required
                 />
               </label>
-              <label className="field">
-                Enviar pelo nó
-                <select name="receiverNode">
-                  <option value="">Automaticamente (líder)</option>
-                  {(cluster?.nodes || []).filter(n => n.member && n.reachable).map(n => (
-                    <option key={n.id} value={n.id}>{n.name} (#{n.id})</option>
-                  ))}
-                </select>
-              </label>
-              <p className="muted">Escolher um seguidor demonstra o encaminhamento REST ao líder.</p>
+              {!client && (
+                <>
+                  <label className="field">
+                    Enviar pelo nó
+                    <select name="receiverNode">
+                      <option value="">Automaticamente (líder)</option>
+                      {(cluster?.nodes || []).filter(n => n.member && n.reachable).map(n => (
+                        <option key={n.id} value={n.id}>{n.name} (#{n.id})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="muted">Escolher um seguidor demonstra o encaminhamento REST ao líder.</p>
+                </>
+              )}
             </>
           )}
           {(action === 'nodeCreate' || action === 'nodeRename') && (
