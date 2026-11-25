@@ -12,7 +12,7 @@ export default function Overview({ auctions, cluster, events, busy, action, setV
           title="Leilões em andamento"
           action={
             <button className="btn" onClick={() => setView('auctions')}>
-              Ver todos ↗
+              Ver todos
             </button>
           }
         >
@@ -32,7 +32,7 @@ export default function Overview({ auctions, cluster, events, busy, action, setV
         >
           <Nodes cluster={cluster} compact />
           <button className="btn mt-4" onClick={() => setView('lab')}>
-            Abrir laboratório ↗
+            Abrir laboratório 
           </button>
         </Panel>
       </div>
@@ -42,14 +42,14 @@ export default function Overview({ auctions, cluster, events, busy, action, setV
           <h2 className="my-3 text-2xl font-bold">Veja o distribuído em ação.</h2>
           <p className="mb-4 text-emerald-100">Crie lances, interrompa o líder e observe o cluster se reorganizar.</p>
           <button className="btn text-stone-900" onClick={() => setView('lab')}>
-            Abrir laboratório ↗
+            Abrir laboratório 
           </button>
         </div>
         <Panel
           title="Log de eventos"
           action={
             <button className="btn" onClick={() => setView('events')}>
-              Ver histórico ↗
+              Ver histórico 
             </button>
           }
         >

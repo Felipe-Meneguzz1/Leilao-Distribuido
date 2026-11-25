@@ -170,7 +170,7 @@ export default function OperationModal({ modal, auction, node, cluster, busy, on
                 disabled={busy}
                 type="submit"
               >
-                {busy ? 'Processando…' : 'Confirmar ↗'}
+                {busy ? 'Processando…' : 'Confirmar'}
               </button>
             )}
           </div>

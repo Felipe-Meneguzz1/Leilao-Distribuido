@@ -66,7 +66,7 @@ export default function Auctions({ auctions, busy, onAction, client = false }) {
                     disabled={busy}
                     onClick={() => onAction('bid', a.id)}
                   >
-                    Dar lance ↗
+                    Dar lance
                   </button>
                 </>
               )}

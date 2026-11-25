@@ -10,7 +10,7 @@ import OperationModal from '../components/OperationModal.jsx';
 const views = {
   overview: ['Visão geral', 'Acompanhe leilões, servidores e decisões do cluster em tempo real.'],
   auctions: ['Leilões', 'Crie itens, acompanhe ofertas e encerre leilões.'],
-  lab: ['Laboratório', 'Simule falhas e observe a eleição automática de líder.'],
+  lab: ['Gerenciador', 'Simule falhas e observe a eleição automática de líder.'],
   events: ['Eventos', 'Acompanhe a coordenação e a replicação.']
 };
 
@@ -159,7 +159,7 @@ export default function AdminDashboard({ user, onLogout, logoutBusy }) {
       <aside className="bg-stone-950 p-5 text-white lg:sticky lg:top-0 lg:h-screen lg:flex lg:flex-col">
         <div className="mb-6">
           <p className="text-3xl font-black tracking-tight">
-            átrio
+            TetraLeitão
             <span className="text-emerald-400">.</span>
           </p>
           <p className="text-xs text-stone-400">distributed auctions</p>
@@ -196,7 +196,7 @@ export default function AdminDashboard({ user, onLogout, logoutBusy }) {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="muted text-xs font-bold uppercase tracking-wider">Sistema de leilão distribuído</p>
-              <h1 className="my-2 text-3xl font-black tracking-tight">{views[view][0]} ↗</h1>
+              <h1 className="my-2 text-3xl font-black tracking-tight">{views[view][0]} </h1>
               <p className="muted">{views[view][1]}</p>
             </div>
             <div className="flex flex-wrap items-end gap-2">
@@ -217,7 +217,7 @@ export default function AdminDashboard({ user, onLogout, logoutBusy }) {
                   notify('Rodada concluída: ' + r.results.length + ' lances no ' + r.auctionId);
                 })}
               >
-                ▶ Simular rodada
+                 Simular rodada
               </button>
               <button
                 className="btn primary"
@@ -269,8 +269,9 @@ export default function AdminDashboard({ user, onLogout, logoutBusy }) {
           )}
           {view === 'events' && <EventsPage events={events} />}
           <footer className="flex flex-wrap justify-between gap-2 border-t border-stone-200 pt-4 text-xs text-stone-500">
-            <span>ÁTRIO / LEILÃO DISTRIBUÍDO</span>
-            <span>React · Node.js · REST · Bully · Lamport · Replicação</span>
+            <span>TetraLeitão / LEILÃO DISTRIBUÍDO</span>
+            <span> Anderson A. Cagnini - Carlos E. Bueno - Felipe Meneguzzi - João C. Jacaboski </span>
+            
           </footer>
         </main>
       </div>
