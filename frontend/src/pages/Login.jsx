@@ -26,13 +26,11 @@ export default function Login({ initialError, onLogin }) {
     <main className="grid min-h-screen lg:grid-cols-2">
       <section className="flex flex-col justify-between bg-stone-950 p-8 text-white sm:p-12">
         <div>
-          <p className="text-4xl font-black tracking-tight">átrio<span className="text-emerald-400">.</span></p>
-          <p className="mt-2 text-xs uppercase tracking-widest text-stone-400">Distributed auctions</p>
+          <p className="text-4xl font-black tracking-tight">TetraLeitão<span className="text-emerald-400">.</span></p>
         </div>
         <div className="my-12 max-w-lg">
-          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Sistema de leilão distribuído</p>
-          <h1 className="mt-4 text-4xl font-black sm:text-5xl">Seu próximo lance começa aqui.</h1>
-          <p className="mt-5 text-stone-300">Acompanhe os leilões e faça suas ofertas em uma plataforma distribuída.</p>
+          <p className="text-4xl font-black uppercase tracking-wider text-emerald-300">Sistema de leilão distribuído</p>
+          <p className="text-2xl mt-5 text-stone-300">Acompanhe os leitões e faça suas ofertas em uma plataforma distribuída.</p>
         </div>
         <p className="text-sm text-stone-400">Projeto acadêmico · Sistemas Distribuídos</p>
       </section>

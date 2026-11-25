@@ -17,9 +17,9 @@ test('Cinco nós, Bully, lances, replicação, falhas, recuperação, membros, q
   const ports=new Set();while(ports.size<6)ports.add(await free());
   const [gatewayPort,...nodePorts]=ports;
   const cluster=nodePorts.map((p,i)=>`${i+1}=http://127.0.0.1:${p}`).join(',');
-  const jobs=[], debug=[];
+  const jobs=[],debug=[];
   function start(id){const child=spawn(process.execPath,[path.join(root,id===0?'gateway/server.js':'src/server.js')],{env:{...process.env,PORT:String(id===0?gatewayPort:nodePorts[id-1]),NODE_ID:String(id),DATA_DIR:path.join(temp,'node'+id),CLUSTER_NODES:cluster,CLUSTER_INITIAL_ACTIVE:'1,2,3',CONTROL_TOKEN:'testing-local',ADMIN_EMAIL:'admin@atrio.local',ADMIN_PASSWORD:'TestAdmin123!',FRONTEND_DIST:frontend},stdio:['ignore','pipe','pipe']});jobs.push(child);child.stdout.on('data',b=>debug.push(String(b)));child.stderr.on('data',b=>debug.push(String(b)));}
-  let adminCookie = '';
+  let adminCookie='';
   async function api(route,method='GET',payload,cookie=adminCookie,extraHeaders={}){const res=await fetch(`http://127.0.0.1:${gatewayPort}${route}`,{method,headers:{'Content-Type':'application/json',...(cookie?{cookie}:{}),...extraHeaders},body:payload===undefined?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(7500)});return {status:res.status,data:await res.json(),cookie:res.headers.get('set-cookie')?.split(';')[0]};}
   async function expect(route,method,payload,code=200){const r=await api(route,method,payload);assert.equal(r.status,code,JSON.stringify(r.data));return r.data;}
   const state=()=>expect('/api/cluster','GET');
@@ -39,7 +39,7 @@ test('Cinco nós, Bully, lances, replicação, falhas, recuperação, membros, q
     assert.equal((await api('/api/auth/register','POST',{name:'Cliente teste',email:'cliente@atrio.local',password:'Client123!'},'')).status,409);
     assert.equal((await api('/api/auth/me','GET',undefined,clientCookie)).data.user.role,'client');
     assert.equal((await api('/api/auctions','GET',undefined,clientCookie)).status,200);
-    for(const [route,method,payload] of [['/api/cluster','GET'],['/api/events','GET'],['/api/auctions','POST',{item:'Proibido'}],['/api/demo','POST',{}],['/api/nodes','POST',{}],['/api/nodes/1','PATCH',{}],['/api/nodes/1/failure','POST',{}],['/api/nodes/1/deactivate','POST',{}],['/api/cluster/quorum','PATCH',{}],['/api/auctions/fake/close','POST',{}]]) {
+    for(const [route,method,payload] of [['/api/cluster','GET'],['/api/events','GET'],['/api/auctions','POST',{item:'Proibido'}],['/api/demo','POST',{}],['/api/nodes','POST',{}],['/api/nodes/1','PATCH',{}],['/api/nodes/1/failure','POST',{}],['/api/nodes/1/deactivate','POST',{}],['/api/nodes/4/activate','POST',{}],['/api/cluster/quorum','PATCH',{}],['/api/auctions/fake/close','POST',{}]]){
       assert.equal((await api(route,method,payload,clientCookie)).status,403,route);
     }
     assert.equal((await api('/api/auth/login','POST',{email:'admin@atrio.local',password:'TestAdmin123!'},'',{origin:'https://evil.example'})).status,403);
@@ -51,7 +51,13 @@ test('Cinco nós, Bully, lances, replicação, falhas, recuperação, membros, q
     await bid('Ana',150,'ana-1',1);await bid('Bruno',200,'bruno-1',2);
     await until(async()=>{const all=await Promise.all(nodePorts.slice(0,3).map(async p=>(await (await fetch(`http://127.0.0.1:${p}/auctions`,{headers:{'x-control-token':'testing-local'}})).json()).auctions[0]));return all.every(a=>a?.bids.length===2&&a.highestBid===200);},'Replicação');
     await expect('/api/nodes/1','PATCH',{name:'Entrada principal'});assert.equal((await state()).nodes[0].name,'Entrada principal');
-    await quorum(3);assert.equal((await state()).quorum,3);await expect('/api/cluster/quorum','PATCH',{quorum:1},400);await quorum(2);
+    // Todos os valores inteiros entre 1 e 5 são aceitos, inclusive acima dos membros ativos.
+    for(const q of [1,2,3,4,5]){await quorum(q);assert.equal((await state()).quorum,q);}
+    assert.equal((await state()).minimumQuorum,1);
+    assert.equal((await state()).majority,false);
+    await expect('/api/auctions','POST',{item:'Bloqueado',openingBid:10},503);
+    for(const q of [0,6,1.5,true])await expect('/api/cluster/quorum','PATCH',{quorum:q},400);
+    await quorum(2);assert.equal((await state()).majority,true);
     assert.equal((await bid('Ana',150,'ana-1')).duplicate,true);
     await ctl(3,true);await elect(2,2);assert.equal((await bid('Carla',250,'carla-1',1)).auction.bids.length,3);
     await ctl(3,false);await elect(3,3);await until(async()=>{const a=(await (await fetch(`http://127.0.0.1:${nodePorts[2]}/auctions`,{headers:{'x-control-token':'testing-local'}})).json()).auctions[0];return a?.bids.length===3&&a.highestBid===250;},'Recuperação');
@@ -63,9 +69,19 @@ test('Cinco nós, Bully, lances, replicação, falhas, recuperação, membros, q
     assert.equal((await api('/api/auctions','GET',undefined,clientCookie)).status,401);
     const relogin=await api('/api/auth/login','POST',{email:'cliente@atrio.local',password:'Client123!'},'');assert.equal(relogin.status,200);assert.equal(relogin.data.user.role,'client');
     const demo=await expect('/api/demo','POST',{auctionId:extra.auction.id});assert.equal(demo.auctionId,extra.auction.id);assert.equal(demo.results.length,3);assert.equal((await list()).find(a=>a.id===extra.auction.id).bids.length,4);
-    await expect('/api/nodes','POST',{name:'Servidor de apoio'},201);await elect(4,4);assert.equal((await state()).quorum,3);await bid('Elisa',300,'elisa-1');
+    await expect('/api/nodes','POST',{name:'Servidor de apoio'},201);await elect(4,4);assert.equal((await state()).quorum,2);await bid('Elisa',300,'elisa-1');
     await expect('/api/nodes','POST',{name:'Servidor extra'},201);await elect(5,5);await quorum(5);await ctl(1,true);await bid('Fora do quorum',320,'blocked-5',undefined,503);await ctl(1,false);await elect(5,5);await quorum(3);
-    await expect('/api/nodes','POST',{name:'Sexto nó'},409);await expect('/api/nodes/5/deactivate','POST',{});await elect(4,4);await expect('/api/nodes/4/deactivate','POST',{});await elect(3,3);await quorum(2);
+    await expect('/api/nodes','POST',{name:'Sexto nó'},409);await expect('/api/nodes/5/deactivate','POST',{});await elect(4,4);await expect('/api/nodes/4/deactivate','POST',{});await elect(3,3);
+    // O nó 5 deve voltar mesmo quando o nó 4 também está inativo.
+    await expect('/api/nodes/5/activate','POST',{});await elect(5,4);
+    const reactivated=await state();assert.deepEqual(reactivated.activeIds,[1,2,3,5]);
+    assert.equal(reactivated.nodes.find(n=>n.id===5).name,'Servidor extra');
+    assert.equal(reactivated.nodes.find(n=>n.id===4).member,false);
+    assert.equal(reactivated.quorum,3);
+    await expect('/api/nodes/5/activate','POST',{},409);
+    await expect('/api/nodes/99/activate','POST',{},404);
+    await until(async()=>{const a=(await (await fetch(`http://127.0.0.1:${nodePorts[4]}/auctions`,{headers:{'x-control-token':'testing-local'}})).json()).auctions.find(a=>a.id===id);return a?.highestBid===300;},'Sincronização do nó reativado');
+    await expect('/api/nodes/5/deactivate','POST',{});await elect(3,3);await quorum(2);
     const closed=await expect(`/api/auctions/${id}/close`,'POST',{requestId:'close-1'});assert.equal(closed.auction.status,'encerrado');await bid('Diego',350,'after-close',undefined,409);
     await ctl(2,true);await ctl(3,true);await expect('/api/auctions','POST',{item:'Outro produto',openingBid:50},503);assert.ok((await expect('/api/events','GET')).events.length>0);
     const html=await fetch(`http://127.0.0.1:${gatewayPort}/`);assert.equal(html.status,200);assert.match(await html.text(),/Visão geral/);

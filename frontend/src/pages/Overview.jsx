@@ -32,7 +32,7 @@ export default function Overview({ auctions, cluster, events, busy, action, setV
         >
           <Nodes cluster={cluster} compact />
           <button className="btn mt-4" onClick={() => setView('lab')}>
-            Abrir laboratório 
+            Abrir Gerenciador 
           </button>
         </Panel>
       </div>
@@ -42,7 +42,7 @@ export default function Overview({ auctions, cluster, events, busy, action, setV
           <h2 className="my-3 text-2xl font-bold">Veja o distribuído em ação.</h2>
           <p className="mb-4 text-emerald-100">Crie lances, interrompa o líder e observe o cluster se reorganizar.</p>
           <button className="btn text-stone-900" onClick={() => setView('lab')}>
-            Abrir laboratório 
+            Abrir Gerenciador 
           </button>
         </div>
         <Panel
