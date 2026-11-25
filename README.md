@@ -1,4 +1,4 @@
-# TetraLeitão — Leilão Online Distribuído
+# TetraLeitão Leilão Online Distribuído
 
 Projeto acadêmico desenvolvido para a disciplina de **Sistemas Distribuídos (2026)**. O sistema permite criar leilões, registrar lances e acompanhar os resultados enquanto diferentes servidores se comunicam, elegem um líder e replicam as operações. A aplicação possui uma interface web para clientes e um painel administrativo para demonstrar falhas, recuperação e gerenciamento do cluster.
 
@@ -193,33 +193,3 @@ Os valores monetários dos registros internos são armazenados em **centavos** (
 
 O **documento de protocolo** exigido na disciplina é uma entrega separada do README e do relatório. Ele deve detalhar, em texto, os campos de cada mensagem, as respostas e o fluxo entre os nós.
 
-## 8. Testes automatizados
-
-Com Node.js 22.13+ instalado localmente, na pasta principal:
-
-```powershell
-npm test
-```
-
-O teste de integração (`backend/tests/cluster.test.js`) inicia processos Node.js e usa diretórios temporários. Ele verifica cadastro, login, permissões, eleição, replicação, idempotência, recuperação, gerenciamento de membros, quórum, eventos e respostas do gateway.
-
-Para compilar a interface localmente:
-
-```powershell
-npm run frontend:install
-npm run frontend:build
-```
-
-O workflow do **GitHub Actions** executa os testes de integração e compila o frontend em pushes e pull requests. Esses testes automatizados não substituem um ensaio manual do Docker Compose, a verificação de falha real de contêiner e a apresentação em dois navegadores.
-
-## 9. Limitações e análise CAP
-
-Durante falhas de comunicação, o sistema precisa equilibrar **consistência e disponibilidade**. Com quórum de maioria, pode bloquear novas operações quando não há confirmações suficientes; isso reduz a disponibilidade de escrita em favor de um histórico mais controlado. Com quórum abaixo da maioria, certas escritas podem continuar, mas há risco de divergência entre réplicas.
-
-A eleição Bully e o mecanismo de replicação implementados são adequados para os cenários acadêmicos testados, mas **não garantem consenso formal** em todos os casos de particionamento, falhas concorrentes e recuperação. O gateway centraliza autenticação e administração; o SQLite de usuários não é replicado entre gateways. A comunicação local usa HTTP e token compartilhado, mas **não possui TLS**. Não disponibilize esta aplicação diretamente na internet sem melhorias de segurança, armazenamento de segredos e tratamento de falhas.
-
-## 10. Entregas da disciplina
-
-Além do código neste repositório, o enunciado solicita **relatório de 4 a 6 páginas**, **documento sobre o formato das mensagens do protocolo**, README com instruções e demonstração ao vivo; um vídeo curto é opcional. O relatório também deve declarar o uso de ferramentas de IA no desenvolvimento, conforme a orientação do professor.
-
-O histórico de commits registra a participação e as alterações do grupo. Para a apresentação, recomenda-se mostrar dois clientes, a eleição do líder, a replicação de lances e a recuperação após uma falha.
