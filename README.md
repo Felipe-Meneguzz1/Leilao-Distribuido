@@ -1,154 +1,225 @@
-# Átrio — Leilão Online Distribuído
+# TetraLeitão — Leilão Online Distribuído
 
-Projeto acadêmico de Sistemas Distribuídos, com frontend React + Tailwind CSS e backend Node.js. Mantém a eleição Bully, relógio lógico de Lamport, replicação, quórum de escrita e gerenciamento de até cinco nós do projeto original.
+Projeto acadêmico desenvolvido para a disciplina de **Sistemas Distribuídos (2026)**. O sistema permite criar leilões, registrar lances e acompanhar os resultados enquanto diferentes servidores se comunicam, elegem um líder e replicam as operações. A aplicação possui uma interface web para clientes e um painel administrativo para demonstrar falhas, recuperação e gerenciamento do cluster.
 
-Base: [Leilao-Distribuido](https://github.com/Felipe-Meneguzz1/Leilao-Distribuido), commit `f669a94edbaa620d51654702ee6aa72a05091cd2`. A lógica distribuída foi preservada; os nós agora exigem o token interno compartilhado e o gateway autentica e autoriza as operações.
+> **Finalidade:** ambiente de demonstração e estudo. Não é uma plataforma de leilões financeiros para produção.
 
-## Perfis de acesso
+## 1. Tecnologias utilizadas
 
-- **Administrador/criador**: mantém o painel original completo (visão geral, leilões, laboratório, eventos, simulação, gerenciamento dos nós e quórum).
-- **Cliente**: cadastra-se, entra, consulta os leilões e o histórico, e registra lances em seu próprio nome. Não pode criar/encerrar leilões, simular lances nem administrar a infraestrutura.
-- O administrador inicial é criado automaticamente a partir de `ADMIN_EMAIL` e `ADMIN_PASSWORD` no primeiro início do gateway. O cadastro público sempre cria clientes. A aplicação usa um administrador global, não permissões individuais por leilão.
+- **Frontend:** React 18, JavaScript, Vite e Tailwind CSS.
+- **Backend:** Node.js 22 e APIs REST com mensagens JSON.
+- **Autenticação:** SQLite nativo do Node.js (`node:sqlite`), sessões e cookies.
+- **Infraestrutura:** Docker e Docker Compose, com volumes persistentes e rede interna.
+- **Mecanismos distribuídos:** eleição Bully, heartbeat, relógio lógico de Lamport, log replicado e quórum de escrita.
 
-### Autenticação e persistência
+## 2. Arquitetura do sistema
 
-O gateway usa o módulo nativo `node:sqlite` do Node.js 22.13+ (sem bibliotecas externas de SQLite). O banco `auth.sqlite` contém as tabelas `users` e `sessions`. As senhas são armazenadas com scrypt e salt aleatório. As sessões expiram em 8 horas, usam tokens aleatórios (somente o hash fica no banco) e cookies HttpOnly/SameSite=Strict. O logout revoga a sessão. O gateway verifica as permissões no servidor; esconder botões na interface não é a única proteção.
+O Docker Compose inicia **seis contêineres**: cinco servidores (`node1` a `node5`) e um gateway web (`dashboard`). Por padrão, os nós **1, 2 e 3** começam como membros ativos e os nós **4 e 5** ficam reservados para ativação pelo administrador. Cada nó possui seu próprio processo e volume de dados.
 
-No Docker o banco fica em `/data/auth.sqlite`, no volume `dashboard_data`. Os leilões, lances, configuração e logs do protocolo continuam nos volumes originais dos nós. SQLite não substitui a replicação de leilões e não é replicado entre os nós. O gateway continua sendo um ponto central de autenticação e gerenciamento.
+```text
+Navegador (administrador ou cliente)
+                  |
+        localhost:8080
+                  |
+       Gateway + autenticação
+                  |
+       Rede interna do Docker
+       /         |          \
+    node1      node2       node3       [node4, node5: reservas]
+           <comunicação REST>
+```
 
-## Executar no Windows com Docker Desktop
+O gateway recebe as solicitações da interface, verifica a sessão e as permissões e as encaminha aos nós. Quando uma operação chega a um nó seguidor, ele a encaminha ao líder. Os nós utilizam os nomes DNS do Docker, como `http://node1:3000`, informados pela variável `CLUSTER_NODES` no Compose; os endereços IP não ficam fixos no código.
 
-1. Abra o Docker Desktop (engine Linux).
-2. Extraia o ZIP e abra um terminal PowerShell na pasta `Leilao-Distribuido`.
-3. Copie o arquivo de configuração e edite os valores (escolha senha forte e token aleatório; não mantenha os exemplos):
+A porta **8080** é a única publicada no host (`127.0.0.1:8080`). Os cinco nós ficam acessíveis apenas pela rede interna do Docker. O SQLite armazena usuários e sessões no gateway; já os leilões e os lances ficam nos logs persistidos de cada nó e são replicados entre os membros.
+
+## 3. Como executar
+
+**Requisitos:** Docker Desktop com o mecanismo de contêineres Linux iniciado; Git é opcional para clonar o repositório. Para executar testes sem Docker, instale Node.js **22.13 ou superior**.
+
+No PowerShell, na raiz do projeto:
 
 ```powershell
 Copy-Item .env.example .env
 notepad .env
 ```
 
-4. Execute:
+Altere `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `CONTROL_TOKEN` para valores próprios. Não publique o arquivo `.env` no repositório. Depois execute:
 
 ```powershell
 docker compose up --build -d
 docker compose ps
 ```
 
-5. Acesse http://localhost:8080 e entre com o e-mail e senha definidos no `.env`. Abra outra janela anônima e cadastre uma conta de cliente para testar os dois perfis.
+Abra **http://localhost:8080**. O primeiro administrador é criado com as credenciais definidas no `.env`. Para experimentar o perfil cliente, utilize outra janela do navegador (ou janela anônima) e escolha a opção de cadastro.
 
-O Docker instala as dependências e compila o frontend automaticamente. O gateway entrega a interface React e as rotas `/api` na mesma origem. Não é necessário instalar Node.js localmente para rodar via Docker.
+Para acompanhar os registros dos serviços:
 
-São seis contêineres: `node1` a `node5` e `dashboard`. Inicialmente os nós 1, 2 e 3 participam do cluster; 4 e 5 são reservas. O líder inicial esperado é o Nó 3. Os nomes dos serviços, do projeto Compose (`atrio-leilao`) e dos volumes foram mantidos para reutilizar os dados. O gateway continua na porta 8080; os nós não publicam mais portas no host para evitar o acesso direto de clientes. A comunicação interna usa as mesmas portas e nomes DNS do Compose. Se houver outra instância usando a porta 8080, pare-a antes de iniciar esta versão. **Não use `docker compose down -v` se quiser preservar os dados.**
+```powershell
+docker compose logs -f
+```
 
-**Importante:** alterar `ADMIN_PASSWORD` no `.env` após a criação inicial do banco não modifica a senha já cadastrada. Não apague o volume para trocar a senha, pois isso também elimina a configuração persistida do gateway. Não há tela de recuperação de senha nesta versão.
-
-Para encerrar sem remover os volumes:
+Para parar os serviços **sem apagar os dados**:
 
 ```powershell
 docker compose down
 ```
 
-## Desenvolvimento do frontend
+**Atenção:** `docker compose down -v` apaga os volumes, incluindo lances e contas. Alterar `ADMIN_PASSWORD` no `.env` após a criação do administrador não redefine a senha salva no SQLite; esta versão não possui recuperação de senha pela interface.
 
-Com Node.js 22 instalado e os serviços Docker em execução, em outro terminal:
+## 4. Funcionalidades
+
+**Administrador:** visualiza a situação do cluster e os eventos, cria e encerra leilões, registra ou simula lances, escolhe o leilão para a rodada automática, ativa nós reservas, renomeia e desativa membros, simula falhas e ajusta o quórum.
+
+**Cliente:** cria sua conta, entra no sistema, consulta os leilões e seus históricos e envia lances usando o nome vinculado à sessão. O cliente não tem permissão para criar ou encerrar leilões nem para gerenciar o cluster. A autorização é conferida no gateway, não somente na interface.
+
+O painel administrativo apresenta o líder atual, os membros disponíveis, os relógios lógicos, a situação do quórum e eventos recentes. Os dados são atualizados periodicamente.
+
+## 5. Como funciona a distribuição
+
+### Eleição de líder e heartbeat
+
+O projeto usa o **algoritmo Bully**. Entre os participantes ativos, o nó de maior identificador tem prioridade para liderar. Assim, no início, o líder esperado é o **Nó 3**. Quando ele deixa de responder, os demais podem iniciar uma eleição; com os nós 1 e 2 disponíveis, o Nó 2 tende a assumir. Se o Nó 4 ou 5 for ativado, ele poderá assumir a liderança por ter ID maior.
+
+O líder envia mensagens periódicas de **heartbeat**. A falta de contato dentro do intervalo de detecção pode disparar uma nova eleição. Os mandatos são identificados pelo campo `term`.
+
+### Relógio lógico e ordenação
+
+Cada nó mantém um relógio lógico de **Lamport**, atualizado durante os eventos e as trocas de mensagens. Para manter a mesma sequência dos leilões, o líder atribui um número `seq` a cada operação no log. O campo `requestId` permite identificar requisições repetidas e reduzir o risco de duplicidade.
+
+### Replicação e quórum
+
+Ao criar, encerrar ou receber um lance, o líder valida a solicitação e envia uma proposta aos demais nós (`/internal/prepare`). Em seguida, solicita o registro (`/internal/commit`). A resposta de confirmação depende do quórum configurado. Um nó que retorna pode consultar um servidor atualizado e sincronizar seu histórico.
+
+**Importante sobre consistência:** a versão atual permite configurar o quórum de **1 a 5**, inclusive abaixo da maioria dos membros. Para a demonstração com três nós, o quórum de maioria é **2**; com cinco nós, é **3**. Quóruns inferiores à maioria aumentam a possibilidade de aceitar escritas com menos nós disponíveis, mas **não garantem a sobreposição entre confirmações** e podem gerar risco de inconsistência sob partições e eleições concorrentes. O projeto não implementa um consenso formal como Raft ou Paxos.
+
+### Administração dos membros
+
+O botão de criação ativa um dos contêineres já preparados; ele **não cria contêineres ilimitados**. Renomear altera o nome exibido, sem modificar o identificador nem o endereço DNS. Para mudanças de configuração, o gateway precisa se comunicar com todos os cinco contêineres, mesmo os que não são membros ativos. Uma falha simulada suspende a participação do nó no protocolo, mas não desliga fisicamente seu contêiner.
+
+## 6. Roteiro de demonstração
+
+Este roteiro cobre os principais requisitos da disciplina e pode ser executado pelo painel:
+
+1. Inicie o Docker e entre como administrador em `http://localhost:8080`.
+2. Abra uma sessão de cliente em outra janela do navegador e registre um lance em um leilão criado pelo administrador.
+3. No painel, mostre os três membros iniciais, o líder atual e os eventos.
+4. Mantenha três membros com **quórum 2**; simule a falha do Nó 3 e aguarde a eleição do Nó 2.
+5. Envie outro lance pelo cliente e observe que o leilão continua funcionando com os dois membros disponíveis.
+6. Restaure o Nó 3 e observe o retorno e a sincronização.
+7. Ative um nó reserva, acompanhe a nova eleição e experimente aumentar o quórum para bloquear escritas quando as confirmações exigidas não forem alcançadas.
+8. Crie dois leilões, selecione um deles em **Simular no leilão** e confira o histórico de três lances gerados automaticamente.
+
+Para demonstrar a **queda real de um contêiner**, em vez de somente a falha simulada, use:
 
 ```powershell
-cd frontend
-npm install
-npm run dev
+docker compose stop node3
+# Aguarde a eleição; consulte o painel e teste um novo lance
+docker compose start node3
 ```
 
-Abra http://localhost:5173. O Vite encaminha `/api` para `http://127.0.0.1:8080`. É possível mudar o destino com a variável `GATEWAY_URL`. Para compilar manualmente: `npm run build` dentro de `frontend` (ou `npm run frontend:build` na raiz).
+A indisponibilidade real do contêiner deve ser demonstrada com os membros e o quórum adequados. Enquanto algum contêiner estiver desligado, determinadas operações administrativas de reconfiguração poderão ser bloqueadas. O gateway permanece sendo um componente central: sua queda impede o acesso pela interface, embora os nós sejam processos separados.
 
-## Estrutura
+## 7. Protocolo REST e formato das mensagens
 
-```text
-Leilao-Distribuido/
-├── backend/
-│   ├── src/server.js          # protocolo distribuído dos nós
-│   ├── gateway/server.js      # API REST e arquivos do frontend
-│   ├── gateway/auth.js        # SQLite, autenticação e sessões
-│   ├── tests/cluster.test.js  # teste de integração
-│   ├── scripts/test-local.sh  # consulta rápida à API
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── components/        # leilões, nós, eventos e modais
-│   │   ├── services/api.js    # cliente REST
-│   │   ├── pages/             # Login, AdminDashboard, ClientDashboard e páginas administrativas
-│   │   ├── App.jsx            # sessão e seleção do painel
-│   │   ├── main.jsx
-│   │   └── index.css          # Tailwind CSS
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   └── package.json
-├── .env.example              # configuração inicial (copiar para .env)
-├── Dockerfile
-├── docker-compose.yml
-└── package.json              # comandos de conveniência
+As comunicações usam **HTTP e JSON**. Chamadas internas feitas pelo gateway e pelos nós enviam o cabeçalho `x-control-token`, configurado via `CONTROL_TOKEN`. O endpoint `/health` pode ser consultado sem esse token.
+
+**Mensagens internas entre nós:**
+
+| Método e rota | Papel |
+| --- | --- |
+| `POST /internal/election` | Inicia/propaga eleição, com `from` e `term`. |
+| `POST /internal/leader` | Anuncia líder, com `leaderId`, `term` e `lamport`. |
+| `POST /internal/heartbeat` | Informa `leaderId`, `term`, `seq` e `lamport`. |
+| `GET /internal/state` | Retorna `nodeId`, `term`, `clock` e `log`. |
+| `POST /internal/prepare` | Envia uma proposta de registro no campo `entry`. |
+| `POST /internal/commit` | Envia o registro `entry` para confirmação. |
+
+Exemplo de heartbeat (valores ilustrativos):
+
+```json
+{
+  "leaderId": 3,
+  "term": 5,
+  "seq": 12,
+  "lamport": 87
+}
 ```
 
-## Funcionalidades
+Exemplo de proposta para registrar um lance em `/internal/prepare` (o mesmo formato `entry` é usado em `/internal/commit`):
 
-- Visão geral: leilões, lances, líder, saúde dos nós e eventos recentes.
-- Leilões: criar, ofertar pelo líder ou seguidor, consultar histórico (sequência, mandato e Lamport), encerrar e simular três lances no leilão selecionado.
-- Laboratório: criar membro usando um contêiner reserva, renomear, desativar, simular falha, restaurar e ajustar quórum.
-- Eventos: registros de coordenação, replicação e falhas.
-- Atualização do painel a cada 2,2 segundos, pausada durante operações.
+```json
+{
+  "entry": {
+    "seq": 13,
+    "kind": "bid",
+    "requestId": "lance-exemplo-001",
+    "term": 5,
+    "leaderId": 3,
+    "lamport": 88,
+    "at": "2026-11-25T14:00:00.000Z",
+    "auctionId": "LEILAO-001",
+    "bidder": "Ana",
+    "cents": 25000
+  }
+}
+```
 
-### Experimentos
+Os valores monetários dos registros internos são armazenados em **centavos** (`cents`). Os tipos de registro são `create` (criação), `bid` (lance) e `close` (encerramento). Nas respostas, códigos como **400** indicam dados inválidos, **403** acesso negado, **409** conflito de estado e **503** indisponibilidade ou ausência de quórum.
 
-1. Com 3 membros e quórum 2, pause o Nó 3, aguarde o Nó 2 assumir e registre novo lance. Restaure o Nó 3.
-2. Ative os nós 4 e 5 e observe a eleição e sincronização do histórico.
-3. Com cinco membros, ajuste o quórum para 5 e pause um membro. Novos lances devem ser bloqueados.
-4. Restaure o membro e desative um nó após restabelecer o quórum; observe a eleição.
-5. Crie dois leilões e selecione um deles no campo de simulação. Confira os três lances em seu histórico.
+**Mensagens administrativas internas:**
 
-## API do gateway (porta 8080)
+- `GET /_admin/state`: situação de um nó, nome, participação, líder, term, seq, Lamport e eventos.
+- `POST /_admin/bootstrap`: prepara a reentrada de um nó usando `sourceId`.
+- `POST /_admin/config`: distribui uma configuração (`config`) com `epoch`, `activeIds`, `writeQuorum` e `names`.
+- `POST /_admin/failure`: simula ou encerra falha com `{"paused": true}` ou `{"paused": false}`.
 
-| Método | Rota | Acesso |
-|---|---|---|
-| POST | `/api/auth/register` | Público: name, email, password |
-| POST | `/api/auth/login` | Público: email, password |
-| GET | `/api/auth/me` | Autenticado |
-| POST | `/api/auth/logout` | Revoga a sessão |
+**Rotas principais do gateway, acessíveis pelo painel:**
 
-Todas as rotas a seguir exigem login. O cliente tem acesso somente a GET `/api/auctions` e POST `/api/auctions/:id/bids` (envia `amount` e `requestId`; o nome é obtido da sessão). As demais são exclusivas do administrador.
+| Método e rota | Operação | Permissão |
+| --- | --- | --- |
+| `POST /api/auth/register` e `POST /api/auth/login` | Cadastro e login | Pública |
+| `GET /api/auth/me` e `POST /api/auth/logout` | Sessão e saída | Autenticado |
+| `GET /api/auctions` | Lista leilões | Cliente e administrador |
+| `POST /api/auctions/:id/bids` | Envia um lance | Cliente e administrador |
+| `POST /api/auctions` e `POST /api/auctions/:id/close` | Cria e encerra leilão | Administrador |
+| `GET /api/cluster` e `GET /api/events` | Estado do cluster e eventos | Administrador |
+| `POST /api/demo` | Simulação de lances em `auctionId` | Administrador |
+| `POST /api/nodes` | Ativa nó reserva | Administrador |
+| `POST /api/nodes/:id/activate` | Reativa um membro | Administrador |
+| `PATCH /api/nodes/:id` e `POST /api/nodes/:id/deactivate` | Renomeia ou desativa | Administrador |
+| `POST /api/nodes/:id/failure` | Controla falha simulada | Administrador |
+| `PATCH /api/cluster/quorum` | Altera quórum | Administrador |
 
-| Método | Rota | Operação |
-|---|---|---|
-| GET | `/api/cluster` | Estado do cluster |
-| GET | `/api/auctions` | Listar leilões |
-| POST | `/api/auctions` | Criar leilão: item, description, openingBid, requestId |
-| POST | `/api/auctions/:id/bids` | Dar lance: bidder, amount, receiverNode (opcional), requestId |
-| POST | `/api/auctions/:id/close` | Encerrar leilão |
-| POST | `/api/demo` | Simular lances: auctionId (opcional) |
-| GET | `/api/events` | Eventos |
-| POST | `/api/nodes` | Ativar reserva: name |
-| PATCH | `/api/nodes/:id` | Renomear: name |
-| POST | `/api/nodes/:id/deactivate` | Desativar membro |
-| POST | `/api/nodes/:id/failure` | Simular/restaurar: paused (booleano) |
-| PATCH | `/api/cluster/quorum` | Alterar quórum: quorum |
+O **documento de protocolo** exigido na disciplina é uma entrega separada do README e do relatório. Ele deve detalhar, em texto, os campos de cada mensagem, as respostas e o fluxo entre os nós.
 
-## Testes
+## 8. Testes automatizados
 
-Na raiz, com Node.js 22.13 ou superior:
+Com Node.js 22.13+ instalado localmente, na pasta principal:
 
 ```powershell
 npm test
 ```
 
-O teste inicia seis processos em portas livres e usa dados temporários; não necessita de Docker ou dependências npm. Abrange login, cadastro, bloqueio de privilégios administrativos, identidade do lance, logout, eleição, replicação, idempotência, lances, falhas, recuperação, entrada/saída de membros, quórum, eventos e entrega estática com arquivos de teste. O workflow de CI também instala e compila o frontend.
+O teste de integração (`backend/tests/cluster.test.js`) inicia processos Node.js e usa diretórios temporários. Ele verifica cadastro, login, permissões, eleição, replicação, idempotência, recuperação, gerenciamento de membros, quórum, eventos e respostas do gateway.
 
-### Validação desta entrega
+Para compilar a interface localmente:
 
-- Código dos nós: lógica original preservada, com autenticação por token nas chamadas internas.
-- Teste de integração Node.js: executado e aprovado (1 suíte, 0 falhas).
-- Sintaxe JavaScript/JSX do frontend: verificada, sem erros.
-- Build Vite/Tailwind e teste no navegador/Docker: não executados neste ambiente por falta das dependências npm locais, acesso à rede e Docker. A primeira execução no computador precisa de acesso ao npm e ao registry de imagens Docker.
+```powershell
+npm run frontend:install
+npm run frontend:build
+```
 
-## Limitações originais
+O workflow do **GitHub Actions** executa os testes de integração e compila o frontend em pushes e pull requests. Esses testes automatizados não substituem um ensaio manual do Docker Compose, a verificação de falha real de contêiner e a apresentação em dois navegadores.
 
-Sistema acadêmico para execução local, não um serviço de leilões monetários em produção. Não implementa Raft/Paxos ou garantias formais de consenso. A reconfiguração é coordenada pelo gateway, requer quórum atual e os cinco contêineres acessíveis. Criar nó ativa um slot existente; não cria um novo contêiner. Renomear não altera o ID nem DNS. A simulação de falha pausa o protocolo; não encerra o contêiner. O quórum nunca é inferior à maioria e deve ser restabelecido antes de reconfigurações. As rotas internas dos nós são protegidas por token configurado no `.env`; não exponha o sistema publicamente. Após timeout de lance, consulte o histórico antes de reenviar. A autenticação foi projetada para o ambiente acadêmico local em HTTP; uma implantação real exige HTTPS, cookies Secure, gestão de segredos, recuperação de conta, auditoria e revisão de segurança.
+## 9. Limitações e análise CAP
+
+Durante falhas de comunicação, o sistema precisa equilibrar **consistência e disponibilidade**. Com quórum de maioria, pode bloquear novas operações quando não há confirmações suficientes; isso reduz a disponibilidade de escrita em favor de um histórico mais controlado. Com quórum abaixo da maioria, certas escritas podem continuar, mas há risco de divergência entre réplicas.
+
+A eleição Bully e o mecanismo de replicação implementados são adequados para os cenários acadêmicos testados, mas **não garantem consenso formal** em todos os casos de particionamento, falhas concorrentes e recuperação. O gateway centraliza autenticação e administração; o SQLite de usuários não é replicado entre gateways. A comunicação local usa HTTP e token compartilhado, mas **não possui TLS**. Não disponibilize esta aplicação diretamente na internet sem melhorias de segurança, armazenamento de segredos e tratamento de falhas.
+
+## 10. Entregas da disciplina
+
+Além do código neste repositório, o enunciado solicita **relatório de 4 a 6 páginas**, **documento sobre o formato das mensagens do protocolo**, README com instruções e demonstração ao vivo; um vídeo curto é opcional. O relatório também deve declarar o uso de ferramentas de IA no desenvolvimento, conforme a orientação do professor.
+
+O histórico de commits registra a participação e as alterações do grupo. Para a apresentação, recomenda-se mostrar dois clientes, a eleição do líder, a replicação de lances e a recuperação após uma falha.
